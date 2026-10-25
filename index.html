@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Estatísticas de Valorant no Brasil</title>
+<meta name="description" content="Veja o K/D, ACS, HS% e o histórico das suas últimas partidas de Valorant. Busque pelo seu Riot ID.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,800&family=IBM+Plex+Sans:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --tinta:#0f2233; --papel:#eef2f5; --faixa:#f5c431; --vitoria:#1b8f7a; --derrota:#d6482b;
+  --linha:#c9d3dc; --suave:#5b6f80; --card:#ffffff;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark){
+  :root{ --tinta:#eef2f5; --papel:#0b1a28; --card:#12283b; --linha:#27425a; --suave:#92a8ba; color-scheme: dark; }
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--papel);color:var(--tinta);font:400 16px/1.5 "IBM Plex Sans",system-ui,sans-serif}
+main{max-width:760px;margin:0 auto;padding:48px 20px 80px}
+h1{font:800 clamp(2.2rem,7vw,3.6rem)/1 "Bricolage Grotesque",sans-serif;margin:0 0 12px;letter-spacing:-.02em}
+.sub{color:var(--suave);margin:0 0 28px;max-width:46ch}
+form{display:flex;gap:8px;flex-wrap:wrap}
+input,button{font:inherit;padding:12px 14px;border:2px solid var(--tinta);background:var(--card);color:var(--tinta);border-radius:6px}
+input[name=nome]{flex:2 1 180px} input[name=tag]{flex:1 1 90px}
+button{background:var(--faixa);color:#0f2233;border-color:#0f2233;font-weight:500;cursor:pointer}
+button:disabled{opacity:.6;cursor:wait}
+:focus-visible{outline:3px solid var(--faixa);outline-offset:2px}
+#msg{margin:20px 0;min-height:1.5em;color:var(--suave)}
+#msg.erro{color:var(--derrota);font-weight:500}
+.resumo{display:grid;grid-template-columns:repeat(4,1fr);gap:0;border:2px solid var(--tinta);border-radius:6px;overflow:hidden;background:var(--card);margin:24px 0}
+.resumo div{padding:16px 12px;border-right:1px solid var(--linha)} .resumo div:last-child{border-right:0}
+.resumo b{display:block;font:800 2rem/1 "Bricolage Grotesque",sans-serif}
+.resumo span{color:var(--suave);font-size:.85rem}
+h2{font:800 1.3rem "Bricolage Grotesque",sans-serif;margin:32px 0 10px}
+ul{list-style:none;margin:0;padding:0}
+li{display:grid;grid-template-columns:6px 1fr auto;gap:14px;align-items:center;background:var(--card);border:1px solid var(--linha);border-radius:6px;margin-bottom:8px;padding:10px 14px 10px 0;overflow:hidden}
+li i{align-self:stretch;background:var(--vitoria)} li.d i{background:var(--derrota)}
+li .kda{font-weight:500} li small{color:var(--suave);display:block}
+li .res{font:800 1.1rem "Bricolage Grotesque",sans-serif;text-align:right}
+li.d .res{color:var(--derrota)} li:not(.d) .res{color:var(--vitoria)}
+footer{margin-top:56px;padding-top:20px;border-top:1px solid var(--linha);color:var(--suave);font-size:.85rem;max-width:62ch}
+footer a{color:inherit}
+@media (max-width:520px){.resumo{grid-template-columns:repeat(2,1fr)}.resumo div:nth-child(2){border-right:0}.resumo div:nth-child(-n+2){border-bottom:1px solid var(--linha)}}
+</style>
+</head>
+<body>
+<main>
+  <h1>Suas últimas partidas de Valorant</h1>
+  <p class="sub">Digite seu Riot ID e veja K/D, ACS e HS% das 10 partidas mais recentes.</p>
+  <form id="f">
+    <input name="nome" placeholder="Nome de jogador" autocomplete="off" required aria-label="Nome de jogador">
+    <input name="tag" placeholder="Tag (ex: BR1)" autocomplete="off" required aria-label="Tag">
+    <button>Buscar jogador</button>
+  </form>
+  <p id="msg" role="status"></p>
+  <section id="out" hidden>
+    <h2 id="quem"></h2>
+    <div class="resumo">
+      <div><b id="kd"></b><span>K/D</span></div>
+      <div><b id="acs"></b><span>ACS médio</span></div>
+      <div><b id="hs"></b><span>Headshots</span></div>
+      <div><b id="wr"></b><span>Vitórias</span></div>
+    </div>
+    <h2>Partidas recentes</h2>
+    <ul id="lista"></ul>
+  </section>
+  <footer>
+    <p>O Valostats BR não é endossado pela Riot Games e não reflete as opiniões da Riot Games nem de ninguém oficialmente envolvido na produção ou no gerenciamento de Riot Games properties. Riot Games e todas as propriedades associadas são marcas comerciais ou marcas registradas da Riot Games, Inc.</p>
+    <p><a href="/privacidade">Política de privacidade</a></p>
+  </footer>
+</main>
+<script>
+const $ = (s) => document.querySelector(s);
+const f = $("#f"), msg = $("#msg"), out = $("#out");
+
+async function buscar(nome, tag, pushar) {
+  msg.className = ""; msg.textContent = "Buscando partidas…"; out.hidden = true;
+  f.querySelector("button").disabled = true;
+  try {
+    const r = await fetch(`/api/jogador?nome=${encodeURIComponent(nome)}&tag=${encodeURIComponent(tag)}`);
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.erro || "Erro inesperado.");
+    mostrar(d);
+    if (pushar) history.pushState({}, "", `/jogador/${encodeURIComponent(nome)}-${encodeURIComponent(tag)}`);
+    msg.textContent = "";
+  } catch (e) {
+    msg.className = "erro"; msg.textContent = e.message;
+  } finally { f.querySelector("button").disabled = false; }
+}
+
+function mostrar(d) {
+  document.title = `${d.jogador} · Estatísticas de Valorant`;
+  $("#quem").textContent = d.jogador;
+  $("#kd").textContent = d.resumo.kd;
+  $("#acs").textContent = d.resumo.acs;
+  $("#hs").textContent = d.resumo.hs + "%";
+  $("#wr").textContent = `${d.resumo.vitorias}/${d.resumo.partidas}`;
+  $("#lista").innerHTML = d.partidas.map((p) => `
+    <li class="${p.vitoria ? "" : "d"}"><i></i>
+      <div><span class="kda">${p.abates} / ${p.mortes} / ${p.assist}</span>
+        <small>ACS ${p.acs} · HS ${p.hs}% · ${new Date(p.data).toLocaleDateString("pt-BR")}</small></div>
+      <div class="res">${p.vitoria ? "Vitória" : "Derrota"}<small>${p.placar ?? ""}</small></div>
+    </li>`).join("");
+  out.hidden = false;
+}
+
+f.addEventListener("submit", (e) => {
+  e.preventDefault();
+  const fd = new FormData(f);
+  buscar(fd.get("nome").trim(), fd.get("tag").trim().replace(/^#/, ""), true);
+});
+
+// Página de jogador direta: /jogador/Nome-TAG
+const m = location.pathname.match(/^\/jogador\/(.+)-([^-]+)$/);
+if (m) { const n = decodeURIComponent(m[1]), t = decodeURIComponent(m[2]); f.nome.value = n; f.tag.value = t; buscar(n, t, false); }
+</script>
+</body>
+</html>
